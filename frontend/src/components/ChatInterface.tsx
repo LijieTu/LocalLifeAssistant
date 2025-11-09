@@ -89,8 +89,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         });
       }
     });
-    
-    setMessagesWithRecommendations(syncedMessages);
+
+    setMessagesWithRecommendations(prev => {
+      const recommendationOnly = prev.filter(
+        msg => !msg.content && msg.recommendations && msg.recommendations.length > 0
+      );
+
+      return [...syncedMessages, ...recommendationOnly];
+    });
     
     // Scroll to bottom when messages are synced (including initial message)
     // Use requestAnimationFrame to ensure DOM is updated before scrolling
