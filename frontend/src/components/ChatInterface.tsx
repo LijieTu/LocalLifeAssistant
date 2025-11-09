@@ -13,6 +13,8 @@ interface ChatMessageWithRecommendations {
   content?: string; // Optional to allow undefined for recommendation-only messages
   timestamp?: string;
   recommendations?: any[];
+  isRecommendation?: boolean;
+  anchorTimestamp?: string | null;
 }
 
 interface ChatInterfaceProps {
@@ -40,6 +42,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [messagesWithRecommendations, setMessagesWithRecommendations] = useState<ChatMessageWithRecommendations[]>([]);
   const [currentStatus, setCurrentStatus] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const lastAssistantMessageTimestampRef = useRef<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
@@ -91,11 +94,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
 
     setMessagesWithRecommendations(prev => {
-      const recommendationOnly = prev.filter(
-        msg => !msg.content && msg.recommendations && msg.recommendations.length > 0
-      );
+      const recommendationOnly = prev.filter(msg => msg.isRecommendation);
+      const recommendationMap = new Map<string | null, ChatMessageWithRecommendations[]>();
 
-      return [...syncedMessages, ...recommendationOnly];
+      recommendationOnly.forEach(rec => {
+        const key = rec.anchorTimestamp ?? null;
+        const existing = recommendationMap.get(key) ?? [];
+        existing.push({ ...rec });
+        recommendationMap.set(key, existing);
+      });
+
+      const rebuilt: ChatMessageWithRecommendations[] = [];
+
+      syncedMessages.forEach(msg => {
+        rebuilt.push(msg);
+        const key = msg.timestamp ?? null;
+        if (recommendationMap.has(key)) {
+          rebuilt.push(...(recommendationMap.get(key) ?? []));
+          recommendationMap.delete(key);
+        }
+      });
+
+      // Append any remaining recommendation groups without anchors or unmatched anchors
+      recommendationMap.forEach(group => {
+        rebuilt.push(...group);
+      });
+
+      return rebuilt;
     });
     
     // Scroll to bottom when messages are synced (including initial message)
@@ -151,12 +176,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         // onMessage
         (messageContent: string, metadata?: any) => {
           // Create the main message without recommendations (they're separate now)
+          const assistantTimestamp = new Date().toISOString();
           const assistantMessage: ChatMessageWithRecommendations = {
             role: 'assistant',
             content: messageContent,
-            timestamp: new Date().toISOString(),
+            timestamp: assistantTimestamp,
             recommendations: []
           };
+
+          lastAssistantMessageTimestampRef.current = assistantTimestamp;
           
           // Add to conversation history immediately
           onNewMessage(assistantMessage as ChatMessage);
@@ -188,7 +216,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             role: 'assistant',
             content: undefined, // Use undefined for cleaner detection of recommendation-only messages
             timestamp: new Date().toISOString(),
-            recommendations: [recommendation]
+            recommendations: [recommendation],
+            isRecommendation: true,
+            anchorTimestamp: lastAssistantMessageTimestampRef.current
           };
           
           // Add to local UI state for rendering (don't add to conversation history)
