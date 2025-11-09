@@ -8,7 +8,7 @@ import os
 import openai
 import re
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 from datetime import datetime, timedelta
 
@@ -27,17 +27,46 @@ class ExtractionService:
         self.openai_api_key = os.getenv("OPENAI_API_KEY")
         if not self.openai_api_key:
             raise ValueError("OPENAI_API_KEY environment variable is required")
+
+        self._use_sdk_client = False
+        try:
+            from openai import OpenAI  # type: ignore
+
+            self._client = OpenAI(api_key=self.openai_api_key)
+            self._use_sdk_client = True
+            logger.info("Initialized OpenAI client via new SDK")
+        except (ImportError, AttributeError):  # Legacy openai package
+            logger.info("Falling back to legacy openai API configuration")
+            openai.api_key = self.openai_api_key
+            self._client = None
     
-    def extract_user_preferences(self, user_message: str) -> UserPreferences:
+    def extract_user_preferences(
+        self,
+        user_message: str,
+        conversation_history: Optional[List[Dict[str, str]]] = None,
+    ) -> UserPreferences:
         """
         Extract all user preferences from a single message using LLM
         """
         try:
+            # Prepare conversation history context
+            history_text = "None provided."
+            if conversation_history:
+                history_snippets = []
+                for msg in conversation_history[-6:]:
+                    role = msg.get("role", "user").title()
+                    content = msg.get("content", "")
+                    history_snippets.append(f"{role}: {content}")
+                history_text = "\n".join(history_snippets)
+
             # Create comprehensive prompt for all preference extraction
             prompt = f"""
-You are a preference extraction assistant. Extract the following information from the user's message:
+You are a preference extraction assistant. Extract user preferences from the latest user message, taking into account the prior conversation when necessary.
 
-User message: "{user_message}"
+Conversation history (oldest to newest):
+{history_text}
+
+Latest user message: "{user_message}"
 
 Extract and return a JSON object with these fields:
 1. "location": Major city name or "none". For suburbs/smaller cities, return the nearest major metro area:
@@ -67,14 +96,14 @@ Return only the JSON object:
 """
 
             # Call OpenAI API for preference extraction
-            response = openai.chat.completions.create(
+            response = self._chat_completion(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a precise preference extraction assistant. Return only valid JSON objects."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=200,
-                temperature=0.1
+                temperature=0.1,
             )
             
             extracted_text = response.choices[0].message.content.strip()
@@ -87,7 +116,7 @@ Return only the JSON object:
                 json_end = extracted_text.rfind("}") + 1
                 json_str = extracted_text[json_start:json_end]
                 extracted_data = json.loads(json_str)
-                
+
                 # Create UserPreferences object
                 preferences = UserPreferences(
                     location=self._normalize_location(extracted_data.get("location", "none")),
@@ -95,7 +124,18 @@ Return only the JSON object:
                     time=self._normalize_time(extracted_data.get("time", "none")),
                     event_type=self._normalize_event_type(extracted_data.get("event_type", "none"))
                 )
-                
+
+                # Supplement missing values with regex fallback for short follow-ups
+                fallback = self._fallback_extraction(user_message)
+                if (not preferences.location or preferences.location == "none") and fallback.location:
+                    preferences.location = fallback.location
+                if (not preferences.event_type or preferences.event_type == "none") and fallback.event_type:
+                    preferences.event_type = fallback.event_type
+                if (not preferences.date or preferences.date == "none") and fallback.date:
+                    preferences.date = fallback.date
+                if (not preferences.time or preferences.time == "none") and fallback.time:
+                    preferences.time = fallback.time
+
                 logger.info(f"LLM extracted preferences: {preferences}")
                 return preferences
             else:
@@ -189,14 +229,14 @@ Examples:
 Return only the city name or "none", nothing else.
 """
 
-            response = openai.chat.completions.create(
+            response = self._chat_completion(
                 model="gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "You are a precise location extraction assistant. Return only city names or 'none'."},
                     {"role": "user", "content": prompt}
                 ],
                 max_tokens=50,
-                temperature=0.1
+                temperature=0.1,
             )
             
             extracted_city = response.choices[0].message.content.strip().lower()
@@ -336,7 +376,7 @@ Return only the city name or "none", nothing else.
             r'\bsports\b|\bfitness\b|\bgym\b|\bworkout\b': 'sports',
             r'\bnetworking\b|\bbusiness\b|\bprofessional\b': 'networking',
             r'\bcomedy\b|\bstandup\b|\bfunny\b': 'comedy',
-            r'\btheater\b|\bplay\b|\bshow\b': 'theater',
+            r'\btheater\b|\bplay\b|\bshow\b|\bperformance\b|\bperformances\b|\bperforming\b': 'theater',
             r'\bfestival\b|\bfair\b|\bmarket\b': 'festival',
             r'\bparty\b|\bcelebration\b|\bclub\b': 'party'
         }
@@ -370,3 +410,20 @@ Return only the city name or "none", nothing else.
         if event_type == "none" or not event_type:
             return None
         return event_type
+
+    def _chat_completion(self, *, model: str, messages: list[dict[str, str]], max_tokens: int, temperature: float):
+        """Wrapper that supports both legacy and new OpenAI SDKs."""
+        if self._use_sdk_client and self._client is not None:
+            return self._client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=max_tokens,
+                temperature=temperature,
+            )
+        # Legacy interface
+        return openai.chat.completions.create(
+            model=model,
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
