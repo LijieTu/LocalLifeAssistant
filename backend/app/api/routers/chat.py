@@ -64,53 +64,26 @@ async def stream_chat_response(
             {"llm_provider": request.llm_provider},
         )
 
-    extracted_preferences = None
-    if request.is_initial_response:
-        logger.info("Initial response detected, extracting user preferences")
-        extracted_preferences = extraction_service.extract_user_preferences(request.message)
-        logger.info("Extracted preferences: %s", extracted_preferences)
-    else:
-        logger.info("Non-initial response detected")
+    chat_service = container.chat_service
+    stored_preferences, history = chat_service._lookup_stored_preferences(user_id, conversation_id)
+    extracted_preferences = chat_service._extract_preferences(request, stored_preferences, history)
 
-    city: Optional[str] = None
-    location_provided = False
+    conversation_storage.save_message(
+        user_id,
+        conversation_id,
+        {
+            "role": "user",
+            "content": request.message,
+            "timestamp": datetime.now().isoformat(),
+            "extracted_preferences": extracted_preferences.dict() if extracted_preferences else None,
+        },
+    )
 
-    if extracted_preferences and extracted_preferences.location and extracted_preferences.location != "none":
-        city = extracted_preferences.location.lower()
-        location_provided = True
-        logger.info("Using city from extracted preferences: %s", city)
-
-    if not city:
-        query_city = extraction_service.extract_location_from_query(request.message)
-        if query_city:
-            city = query_city.lower()
-            location_provided = True
-            if extracted_preferences:
-                extracted_preferences.location = query_city
-            else:
-                from ...extraction_service import UserPreferences
-
-                extracted_preferences = UserPreferences(location=query_city)
-            logger.info("Using city from query extraction: %s, updated extracted_preferences", city)
-
-    if request.is_initial_response:
-        prefs_dict = extracted_preferences.dict() if extracted_preferences else None
-        logger.info("Saving initial user message with extracted_preferences: %s", prefs_dict)
-        conversation_storage.save_message(
-            user_id,
-            conversation_id,
-            {
-                "role": "user",
-                "content": request.message,
-                "timestamp": datetime.now().isoformat(),
-                "extracted_preferences": prefs_dict,
-            },
-        )
-        logger.info(
-            "Saved user message for conversation %s, location in prefs: %s",
-            conversation_id,
-            prefs_dict.get("location") if prefs_dict else "None",
-        )
+    city, location_provided = chat_service._determine_city(
+        request,
+        extracted_preferences,
+        stored_preferences.location,
+    )
 
     if request.is_initial_response and not location_provided:
         logger.info("No location provided in initial response, asking user for location")
@@ -123,7 +96,7 @@ async def stream_chat_response(
         yield "data: {\"type\": \"done\"}\n\n"
         return
 
-    event_type_provided = (
+    event_type_provided = bool(
         extracted_preferences
         and extracted_preferences.event_type
         and extracted_preferences.event_type != "none"
@@ -134,7 +107,6 @@ async def stream_chat_response(
         follow_up_message = "Great! What kind of events are you interested in?"
         yield f"data: {json.dumps({'type': 'message', 'content': follow_up_message, 'location_processed': True, 'usage_stats': usage_stats, 'trial_exceeded': False, 'conversation_id': conversation_id})}\n\n"
         yield "data: {\"type\": \"done\"}\n\n"
-
         conversation_storage.save_message(
             user_id,
             conversation_id,
@@ -146,79 +118,10 @@ async def stream_chat_response(
                 "extracted_preferences": extracted_preferences.dict() if extracted_preferences else None,
             },
         )
+
         return
 
     if not request.is_initial_response:
-        stored_location = None
-        try:
-            logger.info(
-                "Retrieving conversation %s for user %s (anonymous: %s)",
-                conversation_id,
-                user_id,
-                user_id.startswith("user_"),
-            )
-            conversation = conversation_storage.get_conversation(user_id, conversation_id)
-            if conversation:
-                logger.info(
-                    "Conversation found, message count: %d",
-                    len(conversation.get("messages", [])),
-                )
-                if conversation.get("messages"):
-                    for idx, msg in enumerate(conversation.get("messages", [])):
-                        if isinstance(msg, dict):
-                            msg_role = msg.get("role")
-                            msg_content = msg.get("content", "")[:50]
-                            stored_prefs = msg.get("extracted_preferences")
-                            logger.info(
-                                "Message %d: role=%s, content='%s...', has_prefs=%s",
-                                idx,
-                                msg_role,
-                                msg_content,
-                                stored_prefs is not None,
-                            )
-                            if stored_prefs and isinstance(stored_prefs, dict):
-                                location_value = stored_prefs.get("location")
-                                logger.info("  extracted_preferences dict: location=%s", location_value)
-                                if location_value and location_value != "none":
-                                    stored_location = location_value
-                                    logger.info("✓ Found stored location in message %d: %s", idx, stored_location)
-                                    break
-        except Exception as exc:
-            logger.error(
-                "Could not retrieve conversation to get stored location: %s",
-                exc,
-                exc_info=True,
-            )
-
-        if not extracted_preferences:
-            extracted_preferences = extraction_service.extract_user_preferences(request.message)
-        else:
-            current_preferences = extraction_service.extract_user_preferences(request.message)
-            if current_preferences:
-                if current_preferences.event_type and current_preferences.event_type != "none":
-                    extracted_preferences.event_type = current_preferences.event_type
-                if current_preferences.date and current_preferences.date != "none":
-                    extracted_preferences.date = current_preferences.date
-                if current_preferences.time and current_preferences.time != "none":
-                    extracted_preferences.time = current_preferences.time
-
-        event_type_provided = (
-            extracted_preferences
-            and extracted_preferences.event_type
-            and extracted_preferences.event_type != "none"
-        )
-
-        if stored_location:
-            city = stored_location.lower()
-            location_provided = True
-            if extracted_preferences:
-                extracted_preferences.location = stored_location
-            else:
-                from ...extraction_service import UserPreferences
-
-                extracted_preferences = UserPreferences(location=stored_location)
-            logger.info("Using stored location: %s", stored_location)
-
         if not location_provided:
             logger.warning("Non-initial response but no location found")
             location_message = (
@@ -226,16 +129,6 @@ async def stream_chat_response(
             )
             yield f"data: {json.dumps({'type': 'message', 'content': location_message})}\n\n"
             yield "data: {\"type\": \"done\"}\n\n"
-            conversation_storage.save_message(
-                user_id,
-                conversation_id,
-                {
-                    "role": "user",
-                    "content": request.message,
-                    "timestamp": datetime.now().isoformat(),
-                    "extracted_preferences": extracted_preferences.dict() if extracted_preferences else None,
-                },
-            )
             return
 
         if not event_type_provided:
@@ -243,28 +136,7 @@ async def stream_chat_response(
             event_type_message = "What kind of events are you interested in?"
             yield f"data: {json.dumps({'type': 'message', 'content': event_type_message})}\n\n"
             yield "data: {\"type\": \"done\"}\n\n"
-            conversation_storage.save_message(
-                user_id,
-                conversation_id,
-                {
-                    "role": "user",
-                    "content": request.message,
-                    "timestamp": datetime.now().isoformat(),
-                    "extracted_preferences": extracted_preferences.dict() if extracted_preferences else None,
-                },
-            )
             return
-
-        conversation_storage.save_message(
-            user_id,
-            conversation_id,
-            {
-                "role": "user",
-                "content": request.message,
-                "timestamp": datetime.now().isoformat(),
-                "extracted_preferences": extracted_preferences.dict() if extracted_preferences else None,
-            },
-        )
 
     if not city:
         city = "new york"

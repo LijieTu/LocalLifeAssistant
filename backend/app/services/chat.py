@@ -157,19 +157,62 @@ class ChatService:
         stored_preferences: "StoredPreferences",
         history: "ConversationHistory",
     ) -> Optional[UserPreferences]:
+        combined_history: List[Dict[str, str]] = list(history.messages)
+
+        if request.conversation_history:
+            seen = {(msg.get("role"), msg.get("content")) for msg in combined_history}
+            for msg in request.conversation_history[-6:]:
+                if not isinstance(msg, dict):
+                    continue
+                role = msg.get("role")
+                content = msg.get("content")
+                if role not in {"user", "assistant"} or not isinstance(content, str):
+                    continue
+                key = (role, content)
+                if key not in seen:
+                    combined_history.append({"role": role, "content": content})
+                    seen.add(key)
+
+            if len(combined_history) > 6:
+                combined_history = combined_history[-6:]
+
         prefs = self.extraction_service.extract_user_preferences(
             request.message,
-            conversation_history=history.messages,
+            conversation_history=combined_history,
         )
+        logger.info("LLM raw preferences: %s", prefs)
 
-        if stored_preferences.location and (not prefs.location or prefs.location == "none"):
-            prefs.location = stored_preferences.location
         if stored_preferences.event_type and (not prefs.event_type or prefs.event_type == "none"):
             prefs.event_type = stored_preferences.event_type
         if stored_preferences.date and (not prefs.date or prefs.date == "none"):
             prefs.date = stored_preferences.date
         if stored_preferences.time and (not prefs.time or prefs.time == "none"):
             prefs.time = stored_preferences.time
+        latest_city: Optional[str] = None
+        history_for_city: List[Dict[str, Any]] = []
+        if request.conversation_history:
+            history_for_city.extend(request.conversation_history)
+        history_for_city.append({"role": "user", "content": request.message})
+
+        for message in reversed(history_for_city):
+            if not isinstance(message, dict):
+                continue
+            if message.get("role") != "user":
+                continue
+            content = message.get("content")
+            if not isinstance(content, str):
+                continue
+            history_city = self.extraction_service.extract_location_from_query(content)
+            if history_city:
+                latest_city = history_city
+                break
+
+        if latest_city:
+            prefs.location = latest_city
+        elif stored_preferences.location and (not prefs.location or prefs.location == "none"):
+            prefs.location = stored_preferences.location
+
+        logger.info("Preferences after merging history/stored values: %s", prefs)
 
         if request.is_initial_response:
             logger.info("Initial response detected, extracted preferences: %s", prefs)
