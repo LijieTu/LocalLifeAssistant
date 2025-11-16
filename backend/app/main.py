@@ -25,7 +25,6 @@ from .extraction_service import ExtractionService, UserPreferences
 from .usage_tracker import UsageTracker
 from .conversation_storage import ConversationStorage
 from .user_manager import UserManager
-from .api.routers import events as events_router
 
 # Load environment variables from .env file
 load_dotenv('../.env') or load_dotenv('.env') or load_dotenv('/app/.env')
@@ -34,28 +33,7 @@ load_dotenv('../.env') or load_dotenv('.env') or load_dotenv('/app/.env')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(
-    title="Smart Cached RAG Local Life Assistant",
-    version="2.1.0",
-    description="""
-    AI-powered local life assistant with event search API.
-    
-    ## Features
-    - 🤖 Chat interface with AI recommendations
-    - 🎉 Event search across multiple providers
-    - 🔐 API key authentication
-    - ⚡ Rate limiting
-    - 📊 Usage tracking
-    
-    ## External API Access
-    Use the `/api/v1/events` endpoints with an API key for programmatic access.
-    """,
-    docs_url="/docs",
-    redoc_url="/redoc",
-)
-
-# Include external API router
-app.include_router(events_router.router)
+app = FastAPI(title="Smart Cached RAG Local Life Assistant", version="2.1.0")
 
 # Add CORS middleware
 domain_name = os.getenv("DOMAIN_NAME")
