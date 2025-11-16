@@ -190,9 +190,15 @@ class ChatService:
             prefs.time = stored_preferences.time
         latest_city: Optional[str] = None
         history_for_city: List[Dict[str, Any]] = []
+        if history.messages:
+            history_for_city.extend(history.messages)
         if request.conversation_history:
             history_for_city.extend(request.conversation_history)
         history_for_city.append({"role": "user", "content": request.message})
+        logger.info(
+            "City detection history (latest first): %s",
+            [msg.get("content") for msg in reversed(history_for_city) if isinstance(msg, dict)],
+        )
 
         for message in reversed(history_for_city):
             if not isinstance(message, dict):
