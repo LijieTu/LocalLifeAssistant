@@ -385,7 +385,7 @@ export function MobileSearchView({
       
       const userMessage: ChatMessageWithRecommendations = {
         role: 'user',
-        content: citiesDisplay[matchedCityIndex],
+        content: inputText, // Show the original user input, not just the city name
         timestamp: new Date().toISOString(),
       };
       
@@ -417,7 +417,7 @@ export function MobileSearchView({
         
         const userMessage: ChatMessageWithRecommendations = {
           role: 'user',
-          content: supportedEventTypes[matchedEventTypeIndex],
+          content: inputText, // Show the original user input, not just the event type name
           timestamp: new Date().toISOString(),
         };
         
