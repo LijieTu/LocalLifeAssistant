@@ -350,12 +350,24 @@ async def stream_chat_response(request: ChatRequest):
             logger.info(f"Checking potential event type '{potential_event_type}' in supported_event_types")
             
             # First, check if message text contains a valid event type (user's manual input takes priority)
+            # Extract words from message and check for event type keywords
             message_event_type = None
+            message_words = actual_message.split()
+            
+            # Check for exact word match first (e.g., "find music" -> "music")
             for event_type in supported_event_types:
-                if event_type in actual_message:
+                if event_type in message_words:
                     message_event_type = event_type
-                    logger.info(f"Found valid event type '{event_type}' in message text")
+                    logger.info(f"Found valid event type '{event_type}' as word in message text")
                     break
+            
+            # If no exact word match, check substring (e.g., "findmusic" -> "music")
+            if not message_event_type:
+                for event_type in supported_event_types:
+                    if event_type in actual_message:
+                        message_event_type = event_type
+                        logger.info(f"Found valid event type '{event_type}' as substring in message text")
+                        break
             
             # If message text has a valid event type, use it (user's manual input overrides prefix)
             if message_event_type:
@@ -372,11 +384,23 @@ async def stream_chat_response(request: ChatRequest):
         elif len(message_parts) == 2:
             # Format: "city: message" - check message for event type
             actual_message = message_parts[1].strip().lower()
+            message_words = actual_message.split()
+            
+            # Check for exact word match first
             for event_type in supported_event_types:
-                if event_type in actual_message:
+                if event_type in message_words:
                     extracted_preferences = UserPreferences(location=city, event_type=event_type)
-                    logger.info(f"Extracted city '{city}' and event type '{event_type}' from message content")
+                    logger.info(f"Extracted city '{city}' and event type '{event_type}' from message content (word match)")
                     break
+            
+            # If no exact word match, check substring
+            if not extracted_preferences:
+                for event_type in supported_event_types:
+                    if event_type in actual_message:
+                        extracted_preferences = UserPreferences(location=city, event_type=event_type)
+                        logger.info(f"Extracted city '{city}' and event type '{event_type}' from message content (substring match)")
+                        break
+            
             if not extracted_preferences:
                 extracted_preferences = UserPreferences(location=city)
                 logger.info(f"Extracted city '{city}' from message, no event type found")
@@ -384,22 +408,62 @@ async def stream_chat_response(request: ChatRequest):
             # Format: single part message (no colons) - could be city, event type, or regular query
             single_message = message_parts[0].strip().lower()
             logger.info(f"Single-part message detected: '{single_message}'")
+            single_message_words = single_message.split()
             
-            # Check if it's an event type
+            # First, try to extract city from the message (keyword extraction)
+            extracted_city = None
+            if not city or not location_provided:
+                # Check for exact match
+                if single_message in supported_cities:
+                    extracted_city = single_message
+                    logger.info(f"Extracted city '{extracted_city}' from single-part message (exact match)")
+                else:
+                    # Try keyword extraction - check if any city name appears as words in the message
+                    for supported_city in supported_cities:
+                        city_words = supported_city.split('_')  # Cities are in snake_case
+                        # Check if all words of city name appear in message
+                        if all(word in single_message_words for word in city_words):
+                            extracted_city = supported_city
+                            logger.info(f"Extracted city '{extracted_city}' from single-part message (keyword match)")
+                            break
+                    # Also check normalized version
+                    if not extracted_city:
+                        normalized_single = normalize_city_name(single_message)
+                        if normalized_single in supported_cities:
+                            extracted_city = normalized_single
+                            logger.info(f"Extracted city '{extracted_city}' from single-part message (normalized match)")
+            
+            # Use extracted city if found, otherwise use the one from prefix (if any)
+            final_city = extracted_city if extracted_city else city
+            
+            # Check if it's an event type (exact match)
             if single_message in supported_event_types:
-                extracted_preferences = UserPreferences(event_type=single_message)
-                logger.info(f"Extracted event type '{single_message}' from single-part message")
-            # Check if it's a city (already handled above, but keep for clarity)
-            elif city and location_provided:
-                # City was already extracted, check if message contains event type
+                extracted_preferences = UserPreferences(
+                    location=final_city if final_city else None,
+                    event_type=single_message
+                )
+                logger.info(f"Extracted event type '{single_message}' from single-part message (exact match)")
+            # Check if message contains event type (keyword extraction)
+            elif final_city or city:
+                # City was extracted or provided, check if message contains event type
+                # Check for exact word match first
                 for event_type in supported_event_types:
-                    if event_type in single_message:
-                        extracted_preferences = UserPreferences(location=city, event_type=event_type)
-                        logger.info(f"Extracted city '{city}' and event type '{event_type}' from single-part message")
+                    if event_type in single_message_words:
+                        extracted_preferences = UserPreferences(location=final_city or city, event_type=event_type)
+                        logger.info(f"Extracted city '{final_city or city}' and event type '{event_type}' from single-part message (word match)")
                         break
+                
+                # If no exact word match, check substring
                 if not extracted_preferences:
-                    extracted_preferences = UserPreferences(location=city)
-                    logger.info(f"Extracted city '{city}' from single-part message, no event type found")
+                    for event_type in supported_event_types:
+                        if event_type in single_message:
+                            extracted_preferences = UserPreferences(location=final_city or city, event_type=event_type)
+                            logger.info(f"Extracted city '{final_city or city}' and event type '{event_type}' from single-part message (substring match)")
+                            break
+                
+                if not extracted_preferences:
+                    extracted_preferences = UserPreferences(location=final_city or city)
+                    logger.info(f"Extracted city '{final_city or city}' from single-part message, no event type found")
             else:
                 # Neither city nor event type - treat as regular query
                 extracted_preferences = UserPreferences(location=city) if city else None

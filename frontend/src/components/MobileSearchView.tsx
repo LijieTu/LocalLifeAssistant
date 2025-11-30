@@ -288,9 +288,16 @@ export function MobileSearchView({
 
   const looksLikeEventType = (input: string): boolean => {
     const inputLower = input.toLowerCase().trim();
-    // Check if it's exactly an event type keyword or contains event-related terms
+    const inputWords = inputLower.split(/\s+/);
+    
+    // Check if any word in the input matches a supported event type
+    if (supportedEventTypes.some(type => inputWords.includes(type.toLowerCase()))) {
+      return true;
+    }
+    
+    // Check if input contains event-related keywords
     const eventKeywords = ['music', 'sports', 'nightlife', 'business', 'tech', 'dating', 'concert', 'event', 'show', 'meetup', 'conference', 'workshop', 'festival', 'party', 'networking', 'comedy', 'theater'];
-    return eventKeywords.some(keyword => inputLower === keyword || inputLower.includes(keyword));
+    return eventKeywords.some(keyword => inputWords.includes(keyword) || inputLower.includes(keyword));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -302,16 +309,74 @@ export function MobileSearchView({
     const inputText = query.trim();
     const inputLower = inputText.toLowerCase();
 
-    // Check if input matches a valid city (case-insensitive)
-    const matchedCityIndex = citiesDisplay.findIndex(city => 
-      city.toLowerCase() === inputLower || 
-      normalizeCityForMatch(city) === normalizeCityForMatch(inputText)
-    );
+    // Extract keywords from input (split by spaces and common separators)
+    const inputWords = inputLower.split(/\s+/).filter(word => word.length > 0);
+    
+    // Helper function to find city in input (exact match or keyword extraction)
+    const findCityInInput = (): number => {
+      // First try exact match
+      let index = citiesDisplay.findIndex(city => 
+        city.toLowerCase() === inputLower || 
+        normalizeCityForMatch(city) === normalizeCityForMatch(inputText)
+      );
+      if (index >= 0) return index;
+      
+      // Then try to find city name as a keyword in the input
+      for (let i = 0; i < citiesDisplay.length; i++) {
+        const cityLower = citiesDisplay[i].toLowerCase();
+        const cityWords = cityLower.split(/\s+/);
+        
+        // Check if all words of city name appear in input (e.g., "New York" in "i want new york")
+        if (cityWords.every(word => inputWords.includes(word))) {
+          return i;
+        }
+        
+        // For single-word cities, check if the city name appears as a word in input
+        // (e.g., "seattle" in "i want seattle")
+        if (cityWords.length === 1 && inputWords.includes(cityWords[0])) {
+          return i;
+        }
+        
+        // Also check normalized version (handles snake_case cities)
+        const cityNormalized = normalizeCityForMatch(citiesDisplay[i]);
+        const cityNormalizedWords = cityNormalized.split('_');
+        if (cityNormalizedWords.every(word => inputWords.includes(word))) {
+          return i;
+        }
+        
+        // Check if any input word matches the normalized city
+        if (inputWords.some(word => normalizeCityForMatch(word) === cityNormalized)) {
+          return i;
+        }
+      }
+      return -1;
+    };
 
-    // Check if input matches a valid event type
-    const matchedEventTypeIndex = supportedEventTypes.findIndex(type => 
-      type.toLowerCase() === inputLower
-    );
+    // Helper function to find event type in input (exact match or keyword extraction)
+    const findEventTypeInInput = (): number => {
+      // First try exact match
+      let index = supportedEventTypes.findIndex(type => 
+        type.toLowerCase() === inputLower
+      );
+      if (index >= 0) return index;
+      
+      // Then try to find event type as a keyword in the input
+      for (let i = 0; i < supportedEventTypes.length; i++) {
+        const typeLower = supportedEventTypes[i].toLowerCase();
+        // Check if event type appears as a word in the input
+        if (inputWords.includes(typeLower)) {
+          return i;
+        }
+        // Also check if input contains the event type as a substring
+        if (inputLower.includes(typeLower)) {
+          return i;
+        }
+      }
+      return -1;
+    };
+
+    const matchedCityIndex = findCityInInput();
+    const matchedEventTypeIndex = findEventTypeInInput();
 
     // Handle valid city input
     if (matchedCityIndex >= 0) {
@@ -498,13 +563,24 @@ export function MobileSearchView({
     let messageToSend = inputText;
     let eventTypeToUse = selectedEventTypeIndex >= 0 ? supportedEventTypes[selectedEventTypeIndex] : null;
     
-    // Check if query contains a different event type
+    // Check if query contains a different event type (extract keywords)
     if (hasCompletedInitialSelection && selectedEventTypeIndex >= 0) {
       const queryLower = inputText.toLowerCase();
+      const queryWords = queryLower.split(/\s+/);
+      
       for (let i = 0; i < supportedEventTypes.length; i++) {
-        if (supportedEventTypes[i].toLowerCase() !== supportedEventTypes[selectedEventTypeIndex].toLowerCase() &&
-            queryLower.includes(supportedEventTypes[i].toLowerCase())) {
-          // Found a different event type in the query - update state
+        const typeLower = supportedEventTypes[i].toLowerCase();
+        const currentTypeLower = supportedEventTypes[selectedEventTypeIndex].toLowerCase();
+        
+        // Check if event type appears as a word in the query
+        if (typeLower !== currentTypeLower && queryWords.includes(typeLower)) {
+          // Found a different event type as a word in the query - update state
+          setSelectedEventTypeIndex(i);
+          eventTypeToUse = supportedEventTypes[i];
+          break;
+        }
+        // Also check as substring if not found as word
+        if (typeLower !== currentTypeLower && queryLower.includes(typeLower) && !eventTypeToUse) {
           setSelectedEventTypeIndex(i);
           eventTypeToUse = supportedEventTypes[i];
           break;
