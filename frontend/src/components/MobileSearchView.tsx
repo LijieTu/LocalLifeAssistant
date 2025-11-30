@@ -1398,14 +1398,24 @@ export function MobileSearchView({
                             {/* "More Specific" Card - Only show if we have follow-up suggestions */}
                             {selectedEventTypeIndex >= 0 && (() => {
                               const eventTypeColors = [
-                                '#F5B48A', // Peach
-                                '#8AD0C9', // Teal
-                                '#F8D27C', // Warm yellow
-                                '#8FB8FF', // Light blue
-                                '#D9E27A', // Soft chartreuse
-                                '#CDA0F6', // Lavender
-                                '#F4A3A0', // Soft rose
-                                '#FFAFA3'  // Coral
+                                // '#F5B48A', // Peach
+                                // '#8AD0C9', // Teal
+                                // '#F8D27C', // Warm yellow
+                                // '#8FB8FF', // Light blue
+                                // '#D9E27A', // Soft chartreuse
+                                // '#CDA0F6', // Lavender
+                                // '#F4A3A0', // Soft rose
+                                // '#FFAFA3'  // Coral
+                                '#8AD0C9',
+                                '#F8D27C',
+                                '#8AD0C9',
+                                '#F8D27C',
+                                '#8AD0C9',
+                                '#F8D27C',
+                                '#8AD0C9',
+                                '#F8D27C',
+                                '#8AD0C9',
+                                '#F8D27C',
                               ];
                               const eventColor = eventTypeColors[selectedEventTypeIndex];
                               // Create a lighter background color from the event color
@@ -1458,14 +1468,24 @@ export function MobileSearchView({
                           <div className="flex gap-2 px-1 pb-2">
                             {citiesDisplay.map((city, index) => {
                               const colors = [
-                                '#E09C75', // Muted peach
-                                '#73B6AF', // Softer teal
-                                '#E4C063', // Muted yellow
-                                '#7EA4E6', // Softer blue
-                                '#C5D567', // Muted chartreuse
-                                '#B892E0', // Softer lavender
-                                '#E48E8A', // Muted rose
-                                '#F09588'  // Muted coral
+                                //'#E09C75', // Muted peach
+                                //'#73B6AF', // Softer teal
+                                //'#E4C063', // Muted yellow
+                                //'#7EA4E6', // Softer blue
+                                //'#C5D567', // Muted chartreuse
+                                //'#B892E0', // Softer lavender
+                                //'#E48E8A', // Muted rose
+                                //'#F09588'  // Muted coral
+                                '#E09C75',
+                                '#A89F8F',
+                                '#E09C75',
+                                '#A89F8F',
+                                '#E09C75',
+                                '#A89F8F',
+                                '#E09C75',
+                                '#A89F8F',
+                                '#E09C75',
+                                '#A89F8F',
                               ];
                               const borderColor = colors[index % colors.length];
                               const backgroundColor = borderColor;
@@ -1495,14 +1515,25 @@ export function MobileSearchView({
                           <div className="flex gap-2 px-1 pb-2">
                             {supportedEventTypes.map((type, index) => {
                               const colors = [
-                                '#E09C75', // Muted peach
-                                '#73B6AF', // Softer teal
-                                '#E4C063', // Muted yellow
-                                '#7EA4E6', // Softer blue
-                                '#C5D567', // Muted chartreuse
-                                '#B892E0', // Softer lavender
-                                '#E48E8A', // Muted rose
-                                '#F09588'  // Muted coral
+                                // '#E09C75', // Muted peach
+                                // '#73B6AF', // Softer teal
+                                // '#E4C063', // Muted yellow
+                                // '#7EA4E6', // Softer blue
+                                // '#C5D567', // Muted chartreuse
+                                // '#B892E0', // Softer lavender
+                                // '#E48E8A', // Muted rose
+                                // '#F09588'  // Muted coral
+                                '#73B6AF', // Darker teal
+                                //'#B8C98A', // Yellow-teal (closer to yellow)
+                                '#A89F8F', // Darker yellow
+                                '#73B6AF',
+                                '#A89F8F',
+                                '#73B6AF',
+                                '#A89F8F',
+                                '#73B6AF',
+                                '#A89F8F',
+                                '#73B6AF',
+                                '#A89F8F',
                               ];
                               const borderColor = colors[index % colors.length];
                               const backgroundColor = borderColor;
