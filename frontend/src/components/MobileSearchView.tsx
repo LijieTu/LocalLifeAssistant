@@ -308,7 +308,35 @@ export function MobileSearchView({
 
     const inputText = query.trim();
     const inputLower = inputText.toLowerCase();
-
+    
+    // Create and add user message IMMEDIATELY before any processing
+    // This ensures the user sees their input right away
+    const userMessage: ChatMessageWithRecommendations = {
+      role: 'user',
+      content: inputText,
+      timestamp: new Date().toISOString(),
+      recommendations: []
+    };
+    
+    // Add to chat immediately (synchronously)
+    // This ensures the user sees their input right away
+    onNewMessage(userMessage as ChatMessage);
+    setMessages(prev => [...prev, userMessage]);
+    setMessagesWithRecommendations(prev => [...prev, userMessage]);
+    setQuery(''); // Clear input immediately so user sees it was submitted
+    
+    // Use setTimeout(0) to defer processing to next event loop tick
+    // This allows React to render the user message immediately while processing happens in parallel
+    // We pass inputText and inputLower to avoid closure issues with the cleared query state
+    setTimeout(() => {
+      processUserInput(inputText, inputLower);
+    }, 0);
+    
+    return;
+  };
+  
+  const processUserInput = async (inputText: string, inputLower: string) => {
+    
     // Extract keywords from input (split by spaces and common separators)
     const inputWords = inputLower.split(/\s+/).filter(word => word.length > 0);
     
@@ -381,16 +409,6 @@ export function MobileSearchView({
     // Handle valid city input
     if (matchedCityIndex >= 0) {
       setSelectedCityIndex(matchedCityIndex);
-      setQuery('');
-      
-      const userMessage: ChatMessageWithRecommendations = {
-        role: 'user',
-        content: inputText, // Show the original user input, not just the city name
-        timestamp: new Date().toISOString(),
-      };
-      
-      onNewMessage(userMessage as ChatMessage);
-      setMessages(prev => [...prev, userMessage]);
       setIsTyping(true);
       
       // Bot asks for event type
@@ -413,17 +431,6 @@ export function MobileSearchView({
       // If city is already selected, trigger API call
       if (selectedCityIndex >= 0) {
         setHasCompletedInitialSelection(true);
-        setQuery('');
-        
-        const userMessage: ChatMessageWithRecommendations = {
-          role: 'user',
-          content: inputText, // Show the original user input, not just the event type name
-          timestamp: new Date().toISOString(),
-        };
-        
-        onNewMessage(userMessage as ChatMessage);
-        setMessages(prev => [...prev, userMessage]);
-        setMessagesWithRecommendations(prev => [...prev, userMessage]);
         setIsTyping(true);
         currentAssistantMessageIndexRef.current = -1;
 
@@ -524,37 +531,37 @@ export function MobileSearchView({
         return;
       } else {
         // City not selected, ask for city first
-        setQuery('');
         const errorMessage: ChatMessageWithRecommendations = {
           role: 'assistant',
           content: 'Please select a city first, then choose an event type.',
           timestamp: new Date().toISOString(),
         };
         setMessages(prev => [...prev, errorMessage]);
+        setMessagesWithRecommendations(prev => [...prev, errorMessage]);
         return;
       }
     }
 
     // Handle invalid input that looks like city or event type
     if (looksLikeCity(inputText) && matchedCityIndex < 0) {
-      setQuery('');
       const errorMessage: ChatMessageWithRecommendations = {
         role: 'assistant',
         content: 'This city is not supported. Please either re-enter the correct name or use the button to select.',
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      setMessagesWithRecommendations(prev => [...prev, errorMessage]);
       return;
     }
 
     if (looksLikeEventType(inputText) && matchedEventTypeIndex < 0) {
-      setQuery('');
       const errorMessage: ChatMessageWithRecommendations = {
         role: 'assistant',
         content: 'This event type is not supported. Please either re-enter the correct name or use the button to select.',
         timestamp: new Date().toISOString(),
       };
       setMessages(prev => [...prev, errorMessage]);
+      setMessagesWithRecommendations(prev => [...prev, errorMessage]);
       return;
     }
 
@@ -593,17 +600,7 @@ export function MobileSearchView({
       messageToSend = `${citySnakeCase}:${eventTypeToUse}: ${inputText}`;
     }
 
-    const userMessage: ChatMessageWithRecommendations = {
-      role: 'user',
-      content: inputText,
-      timestamp: new Date().toISOString(),
-      recommendations: []
-    };
-
-    onNewMessage(userMessage as ChatMessage);
-    setMessages(prev => [...prev, userMessage]);
-    setMessagesWithRecommendations(prev => [...prev, userMessage]);
-    setQuery('');
+    // User message was already added at the start of handleSubmit
     setIsTyping(true);
     currentAssistantMessageIndexRef.current = -1;
 
