@@ -1020,8 +1020,48 @@ export function MobileSearchView({
         request,
         () => {},
         (messageContent: string, metadata?: any) => {
-          // We'll handle the message creation when we get recommendations
           console.log('📨 [handleEventTypeSelect] Received message:', messageContent);
+          
+          // Use the backend's message content which includes the event type
+          if (messageContent && !botMessage) {
+            botMessage = {
+              role: 'assistant',
+              content: messageContent,
+              timestamp: new Date().toISOString(),
+              recommendations: [],
+              showEvents: true
+            };
+            
+            setMessages(prev => {
+              const newIndex = prev.length;
+              currentAssistantMessageIndexRef.current = newIndex;
+              return [...prev, botMessage!];
+            });
+            setMessagesWithRecommendations(prev => [...prev, botMessage!]);
+            setIsTyping(false);
+          } else if (messageContent && botMessage) {
+            // Update existing message with backend content
+            botMessage = {
+              ...botMessage,
+              content: messageContent
+            };
+            
+            setMessages(prev => {
+              const updated = [...prev];
+              if (currentAssistantMessageIndexRef.current >= 0 && currentAssistantMessageIndexRef.current < updated.length) {
+                updated[currentAssistantMessageIndexRef.current] = botMessage!;
+              }
+              return updated;
+            });
+            
+            setMessagesWithRecommendations(prev => {
+              const updated = [...prev];
+              if (currentAssistantMessageIndexRef.current >= 0 && currentAssistantMessageIndexRef.current < updated.length) {
+                updated[currentAssistantMessageIndexRef.current] = botMessage!;
+              }
+              return updated;
+            });
+          }
           
           if (metadata?.trial_exceeded) {
             onTrialExceeded();
@@ -1036,8 +1076,9 @@ export function MobileSearchView({
           
           recommendationCount++;
           
-          // Create or update the bot message with the specific text and recommendations
+          // Create or update the bot message with recommendations
           if (!botMessage) {
+            // Fallback message if backend didn't send one yet
             botMessage = {
               role: 'assistant',
               content: `Found ${recommendationCount} events in ${citiesDisplay[selectedCityIndex]} that match your search! Check out the recommendations ↓`,
@@ -1053,22 +1094,26 @@ export function MobileSearchView({
             // Stop typing indicator as soon as the main message appears
             setIsTyping(false);
           } else {
-            // Update the existing message with more recommendations and updated count
+            // Update the existing message with more recommendations
+            // Keep the backend's message content (which includes event type) and just add the recommendation
             botMessage = {
               ...botMessage,
-              content: `Found ${recommendationCount} events in ${citiesDisplay[selectedCityIndex]} that match your search! Check out the recommendations ↓`,
               recommendations: [...(botMessage.recommendations || []), recommendation]
             };
             
             setMessages(prev => {
               const updated = [...prev];
-              updated[updated.length - 1] = botMessage!;
+              if (currentAssistantMessageIndexRef.current >= 0 && currentAssistantMessageIndexRef.current < updated.length) {
+                updated[currentAssistantMessageIndexRef.current] = botMessage!;
+              }
               return updated;
             });
             
             setMessagesWithRecommendations(prev => {
               const updated = [...prev];
-              updated[updated.length - 1] = botMessage!;
+              if (currentAssistantMessageIndexRef.current >= 0 && currentAssistantMessageIndexRef.current < updated.length) {
+                updated[currentAssistantMessageIndexRef.current] = botMessage!;
+              }
               return updated;
             });
           }
