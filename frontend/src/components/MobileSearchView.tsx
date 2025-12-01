@@ -1675,7 +1675,13 @@ export function MobileSearchView({
                   handleSubmit(e as any);
                 }
               }}
-              placeholder={messages.length > 1 ? "What else are you looking for?" : "What vibe are you looking for?"}
+              placeholder={
+                selectedCityIndex < 0 || selectedEventTypeIndex < 0
+                  ? "Please select your location and event type"
+                  : messages.length > 1
+                  ? "What else are you looking for?"
+                  : "What vibe are you looking for?"
+              }
               className="flex-1 rounded-xl border h-14 text-base px-6"
               style={{ 
                 backgroundColor: 'white',
