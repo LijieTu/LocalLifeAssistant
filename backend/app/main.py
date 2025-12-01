@@ -750,19 +750,22 @@ async def stream_chat_response(request: ChatRequest):
         
         # Format event type for display (only if not default "events")
         event_type_display = ""
-        if event_type and event_type != "events":
+        if event_type and event_type != "events" and event_type != "none":
             event_type_display = f'"{event_type}" '
+            logger.info(f"📝 [Response Message] Including event type in message: '{event_type_display}'")
+        else:
+            logger.info(f"📝 [Response Message] Not including event type (event_type='{event_type}')")
         
         if top_events:
             response_message = (
-                f"Found {len(top_events)} {event_type_display} events in {format_city_name(city)} that match your search!"
+                f"Found {len(top_events)} {event_type_display}events in {format_city_name(city)} that match your search!"
                 f"{location_note} Check out the recommendations ↓"
             )
+            logger.info(f"📝 [Response Message] Generated message: '{response_message}'")
         else:
             response_message = (
                 f"😔 I couldn't find any {event_type_display} events in {format_city_name(city)} matching your query."
-                f"{location_note} Try asking about 'fashion events', 'music concerts', "
-                f"'halloween parties', or 'free events'."
+                f"{location_note} Try asking about 'music', 'sports', 'nightlife', 'business', 'tech', or 'dating'."
             )
         
         # Determine if location was just processed (for follow-up message)
