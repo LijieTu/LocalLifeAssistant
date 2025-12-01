@@ -748,14 +748,19 @@ async def stream_chat_response(request: ChatRequest):
         if not location_provided and city == "new york":
             location_note = " (I couldn't determine your location, so I'm defaulting to New York)"
         
+        # Format event type for display (only if not default "events")
+        event_type_display = ""
+        if event_type and event_type != "events":
+            event_type_display = f'"{event_type}" '
+        
         if top_events:
             response_message = (
-                f"Found {len(top_events)} events in {format_city_name(city)} that match your search!"
+                f"Found {len(top_events)} {event_type_display} events in {format_city_name(city)} that match your search!"
                 f"{location_note} Check out the recommendations ↓"
             )
         else:
             response_message = (
-                f"😔 I couldn't find any events in {format_city_name(city)} matching your query."
+                f"😔 I couldn't find any {event_type_display} events in {format_city_name(city)} matching your query."
                 f"{location_note} Try asking about 'fashion events', 'music concerts', "
                 f"'halloween parties', or 'free events'."
             )
