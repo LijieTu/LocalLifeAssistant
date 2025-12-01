@@ -751,7 +751,7 @@ async def stream_chat_response(request: ChatRequest):
         # Format event type for display (only if not default "events")
         event_type_display = ""
         if event_type and event_type != "events" and event_type != "none":
-            event_type_display = f'"{event_type}" '
+            event_type_display = f'{event_type} '
             logger.info(f"📝 [Response Message] Including event type in message: '{event_type_display}'")
         else:
             logger.info(f"📝 [Response Message] Not including event type (event_type='{event_type}')")
